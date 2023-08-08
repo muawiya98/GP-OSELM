@@ -1,23 +1,3 @@
-
-
-import warnings
-import os
-
-warnings.filterwarnings("ignore")
-warnings.filterwarnings("ignore", category=UserWarning, module="tensorflow")
-
-# Redirect warnings to null device
-with open(os.devnull, "w") as devnull:
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        warnings.warn("This is a sample warning.")  # Example warning that will be suppressed
-
-        # Rest of your code
-
-# print("Print without warning")
-
-
-
 from sklearn.metrics import recall_score, precision_score, f1_score, roc_auc_score,accuracy_score
 from sklearn.ensemble import RandomForestClassifier,RandomForestRegressor
 from sklearn.model_selection import train_test_split

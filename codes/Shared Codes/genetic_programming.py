@@ -9,24 +9,6 @@ computer programs.
 #
 # License: BSD 3 clause
 
-import warnings
-import os
-
-warnings.filterwarnings("ignore")
-warnings.filterwarnings("ignore", category=UserWarning, module="tensorflow")
-
-# Redirect warnings to null device
-with open(os.devnull, "w") as devnull:
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        warnings.warn("This is a sample warning.")  # Example warning that will be suppressed
-
-        # Rest of your code
-
-print("Print without warning")
-
-
-
 import itertools
 from abc import ABCMeta, abstractmethod
 from warnings import warn

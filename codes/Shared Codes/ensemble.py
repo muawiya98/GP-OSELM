@@ -1,25 +1,36 @@
-import warnings
-import os
-
-warnings.filterwarnings("ignore")
-warnings.filterwarnings("ignore", category=UserWarning, module="tensorflow")
-
-# Redirect warnings to null device
-with open(os.devnull, "w") as devnull:
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        warnings.warn("This is a sample warning.")  # Example warning that will be suppressed
-
-        # Rest of your code
-
-print("Print without warning")
-
-
-
-from oselm import OSELMClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.preprocessing import OneHotEncoder
+from matplotlib.colors import ListedColormap
 from multiprocessing.pool import ThreadPool
-import numpy as np 
+from sklearn.naive_bayes import GaussianNB
+from sklearn.metrics import roc_auc_score
+from imblearn.over_sampling import SMOTE
+from sklearn.utils import shuffle
+from contextlib import suppress
+from collections import Counter
+import matplotlib.pyplot as plt
+from tqdm.notebook import tqdm
+from random import shuffle
+import seaborn as sns
+from time import time
+import pandas as pd
+import numpy as np
+import warnings
+import scipy.io
+import pickle
+import sys
+import gc
+import os
+import re 
 
+code_path = '/content/drive/My Drive/Colab Notebooks/Muawiya/Genetic Programming Combiner with DFS/codes/Shared Codes'
+sys.path.insert(0,code_path)
+from oselm import OSELMClassifier,set_use_know
 class Classifier:
     def __init__(self, clf, max_number_of_classes:int=2):
         """
@@ -31,8 +42,8 @@ class Classifier:
         # decision profile contains the prediction probability values.
         self.decision_profile = None
         self.max_number_of_classes = max_number_of_classes
-        
-    
+
+
     # fit the classifier
     def fit(self, X_train, y_train, unselected_features=None):
         """
@@ -40,34 +51,40 @@ class Classifier:
         X_train: 2d array with shape num_of_samples x num_of_feautres.
         y_train: 1d array with shape (num_of_samples, ) contains the ground truth values.
         """
+        # X_train = np.array(X_train) if not type(X_train).__module__ == np.__name__ else X_train
+        # y_train = np.array(y_train) if not type(y_train).__module__ == np.__name__ else y_train
+        # print("X_train : ",X_train.shape)
+        # print("y_train : ",y_train.shape)
         if type(self.clf) == OSELMClassifier:
             self.clf.fit(X_train, y_train, unselected_features)
         else:
+            # print("1234")
             self.clf.fit(X_train, y_train)
-            
+            # print(type(self.clf))
+
     def predict_proba(self, X):
         """
         predict the probability of belonging this `sample` to each class
         """
         # sometimes number of unique values in the predicted variable differ from one chunk to another,
         # so that we need to pad the results of probablity prediction to new size equal to `max_number_of_classes`
-        
+
         pred = self.clf.predict_proba(X)
         return pred
-    
+
     def build_decision_profile(self, sample):
         """
         add the predict_probability result to the `decision_profile` list
         sample: one example form the dataset
         """
-        self.decision_profile = self.predict_proba(sample.reshape((1, -1)))[0].tolist() 
+        self.decision_profile = self.predict_proba(sample.reshape((1, -1)))[0].tolist()
 
 
 class Ensemble:
     def __init__(self, classifiers, program, apply_model_replacement):
-        
+
         """
-        classfiers : list of Classifier objects  
+        classfiers : list of Classifier objects
         program: result of genetic programming (SymbolicRegressor)
         """
         self.classifiers = classifiers
@@ -80,7 +97,7 @@ class Ensemble:
     def fit(self, X_train, y_train, unselected_features=None):
         self.classifier_induction(self.classifiers, X_train, y_train, unselected_features=unselected_features)
         self.update_program(X_train, y_train)
-    
+
 
     def classifier_induction(self, new_classifiers, X_train:np.array, y_train:np.array, unselected_features:list=None)->list:
         """
@@ -91,12 +108,12 @@ class Ensemble:
         ----------------------------------------------------------------
         return new_classifiers after training.
         """
-        # use classifier_induction_util for multiprocessing  
+        # use classifier_induction_util for multiprocessing
         def classifier_induction_util(classifier):
             clf = Classifier(classifier, 2)
             clf.fit(X_train.copy(), y_train.copy(), unselected_features)
-            return clf 
-        # train each new classifier in parallel 
+            return clf
+        # train each new classifier in parallel
         trained_classifiers = ThreadPool(len(new_classifiers)).map(classifier_induction_util, new_classifiers)
         # add the trained classifiers to the ensemble classifiers.
         if self.apply_model_replacement:
@@ -111,7 +128,7 @@ class Ensemble:
           pass
         elif criteria == 'time':
           self.classifiers = self.classifiers[3:]
-            
+
 
     def global_support_degree(self, sample):
         for i,clf in enumerate(self.classifiers):
@@ -121,15 +138,15 @@ class Ensemble:
             clf.build_decision_profile(sample)
         profile = np.array([self.classifiers[i].decision_profile for i in range(len(self.classifiers))])
         return np.argmax(profile.sum(axis=0))
-    
+
     def update_program(self, X, y):
         # change the fit flag to True.
-        self.fitted = True 
+        self.fitted = True
         profiles = np.array([self.classifiers[i].predict_proba(X) for i in range(len(self.classifiers))])
         self.program.fit(profiles, y)
         self.program_history.append(self.program)
 
-    
+
     def predict(self, X_test):
         X_test = np.squeeze(X_test) if len(list(X_test.shape))>2 else X_test
         profiles = np.array([self.classifiers[i].predict_proba(X_test) for i in range(len(self.classifiers))])
@@ -144,7 +161,7 @@ class Ensemble:
           auc = 0.5
         self.scores[chunk_id] = {"accuracy": accuracy_score(y_test, y_pred),
                                  "precision": precision_score(y_test, y_pred),
-                                 "recall": recall_score(y_test, y_pred), 
+                                 "recall": recall_score(y_test, y_pred),
                                  "f1-score": f1_score(y_test, y_pred),
                                  "auc": auc}
         print(self.scores)
