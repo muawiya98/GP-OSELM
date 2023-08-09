@@ -39,28 +39,20 @@ class Classifier:
         max_number_of_classes: integer, number of unique values in the predicted variable.
         """
         self.clf = clf
-        # decision profile contains the prediction probability values.
         self.decision_profile = None
         self.max_number_of_classes = max_number_of_classes
 
 
-    # fit the classifier
     def fit(self, X_train, y_train, unselected_features=None):
         """
         Call the training function
         X_train: 2d array with shape num_of_samples x num_of_feautres.
         y_train: 1d array with shape (num_of_samples, ) contains the ground truth values.
         """
-        # X_train = np.array(X_train) if not type(X_train).__module__ == np.__name__ else X_train
-        # y_train = np.array(y_train) if not type(y_train).__module__ == np.__name__ else y_train
-        # print("X_train : ",X_train.shape)
-        # print("y_train : ",y_train.shape)
         if type(self.clf) == OSELMClassifier:
             self.clf.fit(X_train, y_train, unselected_features)
         else:
-            # print("1234")
             self.clf.fit(X_train, y_train)
-            # print(type(self.clf))
 
     def predict_proba(self, X):
         """
@@ -92,6 +84,7 @@ class Ensemble:
         self.program_history = []
         self.fitted = False
         self.scores = {}
+        self.maximum_number_of_classifer = 4
         self.apply_model_replacement = apply_model_replacement
 
     def fit(self, X_train, y_train, unselected_features=None):
@@ -127,7 +120,7 @@ class Ensemble:
         if criteria == 'best':
           pass
         elif criteria == 'time':
-          self.classifiers = self.classifiers[3:]
+          self.classifiers = self.classifiers[-self.maximum_number_of_classifer:]
 
 
     def global_support_degree(self, sample):
@@ -154,7 +147,6 @@ class Ensemble:
 
     def evaluate(self, X_test, y_test, chunk_id=1):
         y_pred = self.predict(X_test)
-        # accuracy_score, precision_score, recall_score, f1_score
         try:
           auc = roc_auc_score(y_test, y_pred)
         except:
