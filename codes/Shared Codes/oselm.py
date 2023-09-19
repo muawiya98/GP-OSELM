@@ -384,7 +384,7 @@ class RandomLayer(BaseRandomLayer):
 
     def _compute_input_activations(self, X, non_selected_features=None):
         """Compute input activations given X"""
-        #global use_know
+        global use_know
         n_samples = X.shape[0]
         rs = check_random_state(self.random_state)
         mlp_acts = np.zeros((n_samples, self.n_hidden))

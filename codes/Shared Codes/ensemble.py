@@ -22,6 +22,7 @@ import pandas as pd
 import numpy as np
 import warnings
 import scipy.io
+import datetime
 import pickle
 import sys
 import gc
@@ -87,12 +88,18 @@ class Ensemble:
         self.maximum_number_of_classifer = 4
         self.apply_model_replacement = apply_model_replacement
 
+    def get_scores(self):
+      return self.scores
+    
+    def set_scores(self,scores):
+      self.scores = scores
+    
     def fit(self, X_train, y_train, unselected_features=None):
-        self.classifier_induction(self.classifiers, X_train, y_train, unselected_features=unselected_features)
+        self.classifier_induction(self.classifiers, X_train, y_train, unselected_features=unselected_features,only_fit=True)
         self.update_program(X_train, y_train)
 
 
-    def classifier_induction(self, new_classifiers, X_train:np.array, y_train:np.array, unselected_features:list=None)->list:
+    def classifier_induction(self, new_classifiers, X_train:np.array, y_train:np.array, unselected_features:list=None,only_fit=False)->list:
         """
         new_classifiers: list of new classifiers to insert them into ensemble classifiers.
         X_train: training dataset .
@@ -109,7 +116,7 @@ class Ensemble:
         # train each new classifier in parallel
         trained_classifiers = ThreadPool(len(new_classifiers)).map(classifier_induction_util, new_classifiers)
         # add the trained classifiers to the ensemble classifiers.
-        if self.apply_model_replacement:
+        if self.apply_model_replacement and not only_fit:
           self.classifiers += trained_classifiers
         else:
           self.classifiers = trained_classifiers
@@ -156,4 +163,4 @@ class Ensemble:
                                  "recall": recall_score(y_test, y_pred),
                                  "f1-score": f1_score(y_test, y_pred),
                                  "auc": auc}
-        print(self.scores)
+        print(chunk_id,self.scores[chunk_id])
