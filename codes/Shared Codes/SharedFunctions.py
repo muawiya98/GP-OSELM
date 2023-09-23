@@ -170,7 +170,7 @@ def concept_drift_detection(drift_detection_obj, sample) -> bool:
   
   
 def random_forest_feature_selection(X, y):
-    sel = SelectFromModel(RandomForestClassifier(n_estimators = 5))
+    sel = SelectFromModel(RandomForestClassifier(n_estimators = 2))
     sel.fit(X, y)
     return sel.get_support()
   
@@ -320,8 +320,9 @@ def main(f_name, generate_model, train_size=0.8,apply_model_replacement=False,tr
               unselected_feautres = np.where(selected != 1)[0]
             else:
               print("Without Any FS")
+              X_train = np.delete(X_train, unselected_feautres, 1)
+              X_test = np.delete(X_test, unselected_feautres, 1)
               selected = None
-              unselected_feautres = None
           else:
             if feature_selection[1] == "random_forest":
               print("RandomForest")
