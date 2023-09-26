@@ -170,51 +170,10 @@ def concept_drift_detection(drift_detection_obj, sample) -> bool:
   
   
 def random_forest_feature_selection(X, y):
-    sel = SelectFromModel(RandomForestClassifier(n_estimators = 2))
+    sel = SelectFromModel(RandomForestClassifier(n_estimators = 2,random_state=0))
     sel.fit(X, y)
     return sel.get_support()
   
-  
-  
-  
-#def E2SC4ID (X,y,sample_index,ensemble,drift_detection_obj,drift_location={},drift=False):
-#  y_pred = ensemble.global_support_degree(X)
-#  if y is not None:
-#    actual_drift = concept_drift_detection(drift_detection_obj, int(y!=y_pred))
-#    if actual_drift and not drift:
-#      drift_location[sample_index] = 'drift'
-#    drift = drift or actual_drift
-#    return drift, drift_location
-#  return False,drift_location
-
-
-
-#def E2SC4ID_STREAM(ensemble, X, y, unselected_features, drift_location, drift_detection_obj,
-#                   chunk_number, #result_save_path_data,maxC=4,train_size=0.8,drift=False,transfer_learning=True):
-#    if chunk_number==1 or not transfer_learning:
-#      ensemble.fit(X, y)
-#      return ensemble, drift_location,drift_detection_obj
-#    for i in tqdm(range(len(X))):
-#      x, y_true = X[i], y[i]
-#      drift, drift_location = E2SC4ID(x,y_true,sample_index=(i +(chunk_number * #10000)),ensemble=ensemble,drift=drift,
-                                        #drift_detection_obj=drift_detection_obj,drift_location=drift_location)
-#
-#    
-#    if drift:
-#      drift = False
-#      drift_detection_obj.reset()
-#      X_train,X_valid,y_train,y_valid = train_test_split(X, y, random_state=42, train_size=train_size)
-#
-#      new_models = ensemble.classifier_induction([model for model in #create_list_of_oselm_models(number_of_hidden_neurons=X.shape[1]*3 // 2)]
-#                                                  ,X_train,y_train,unselected_features)
-#      if len(ensemble.classifiers) >= maxC:
-#          ensemble.model_replacement('time')
-#      ensemble.update_program(X_valid, y_valid)
-#    else:
-#      ensemble.fit(X, y)
-#    return ensemble, drift_location, drift_detection_obj
-  
-
 def E2SC4ID(X,y,ensemble,drift_detection_obj):
   y_pred = ensemble.global_support_degree(X)
   if y is not None:
@@ -242,18 +201,18 @@ def E2SC4ID_STREAM(ensemble, X, y, unselected_features, drift_detection_obj,
 
 def main(f_name, generate_model, train_size=0.8,apply_model_replacement=False,transfer_learning=False,
          feature_selection=[], result_save_path="",DFS_results_path='',ChunkNumber=0):
-  datasets = {}
+  datasets,results = {},{}
   d = prepare_data(f_name)
   d = d.sample(frac=1, random_state=42)
   buffer = d.sample(n=5000)
   d.reset_index(inplace=True)
   d.replace([np.inf], 0, inplace=True)
   datasets[f_name.split('/')[-1]] = d
-  results = {}
   # drift_locations_in_all_dataset = {}
-  ensemble = None
-  drift_detection_obj = DDM()
+  
   for key in tqdm(datasets.keys()):
+      drift_detection_obj = ADWIN()
+      ensemble = None
       result_save_path_data = os.path.join(result_save_path, key)
       drift_location = {}
       prediction_times = {}
@@ -277,20 +236,6 @@ def main(f_name, generate_model, train_size=0.8,apply_model_replacement=False,tr
       chunk_number = 1
       for CN,chunk_X, chunk_Y in tqdm(zip([*range(len(chunks_labels))],chunks_features, chunks_labels)):
           drift = False
-          if ChunkNumber > CN:
-            print("Skip Chunk Number : {}".format(CN))
-            continue
-          try:
-            chunk_X, chunk_Y = SMOTE().fit_resample(chunk_X, chunk_Y)
-          except:
-            if chunk_Y.sum() in [0, 1]:
-              new_samples, new_labels = generate_new_samples(buffer, chunk_Y)
-              chunk_X = np.concatenate((chunk_X, new_samples))
-              chunk_Y = np.concatenate((chunk_Y, new_labels))
-          gc.collect()
-
-          unselected_feautres = None
-          selected = None
           if chunk_number > 1:
             for i in tqdm(range(len(chunk_X))):
               if drift:
@@ -298,7 +243,16 @@ def main(f_name, generate_model, train_size=0.8,apply_model_replacement=False,tr
                 break
               x, y_true = chunk_X[i], chunk_Y[i]
               drift = E2SC4ID(x,y_true,ensemble=ensemble,drift_detection_obj=drift_detection_obj)
-
+          try:
+            chunk_X, chunk_Y = SMOTE(random_state=0).fit_resample(chunk_X, chunk_Y)
+          except:
+            if chunk_Y.sum() in [0, 1]:
+              new_samples, new_labels = generate_new_samples(buffer, chunk_Y)
+              chunk_X = np.concatenate((chunk_X, new_samples))
+              chunk_Y = np.concatenate((chunk_Y, new_labels))
+          gc.collect()
+          unselected_feautres = None
+          selected = None
           X_train, X_test, y_train, y_test = train_test_split(chunk_X, chunk_Y, random_state=42, train_size=train_size)
           if feature_selection[0] == "feature_evolving":
             unselected_feautres = feature_evolving(evolving_matrix=evolving_matrix)
@@ -345,7 +299,7 @@ def main(f_name, generate_model, train_size=0.8,apply_model_replacement=False,tr
             else:temp = X_train
 
             ensemble,drift_detection_obj = E2SC4ID_STREAM(ensemble=ensemble, X=temp, y=y_train, unselected_features=None,drift_detection_obj=drift_detection_obj,
-                                      chunk_number=chunk_number, result_save_path_data=result_save_path_data,transfer_learning=transfer_learning)
+                                      chunk_number=chunk_number, result_save_path_data=result_save_path_data,drift=drift,transfer_learning=transfer_learning)
             if not selected is None:temp = np.squeeze(X_test[:, selected]) if len(list(X_test[:, selected].shape))>2 else X_test[:, selected]
             else:temp = X_test
             ensemble.evaluate(temp, y_test, chunk_number)
@@ -354,7 +308,7 @@ def main(f_name, generate_model, train_size=0.8,apply_model_replacement=False,tr
             if not ensemble is None:
               init_ensemble.set_scores(ensemble.get_scores())
             ensemble,drift_detection_obj = E2SC4ID_STREAM(ensemble=init_ensemble,X=X_train, y=y_train, unselected_features=unselected_feautres,drift_detection_obj=drift_detection_obj,
-                                      chunk_number=chunk_number,result_save_path_data=result_save_path_data,transfer_learning=transfer_learning)
+                                      chunk_number=chunk_number,result_save_path_data=result_save_path_data,drift=drift,transfer_learning=transfer_learning)
             ensemble.evaluate(X_test, y_test, chunk_number)
 
 
