@@ -33,11 +33,11 @@ import os
 import re
 
 
-data_path = '/content/drive/My Drive/Colab Notebooks/Muawiya/Genetic Programming Combiner with DFS/data'
-code_path = '/content/drive/My Drive/Colab Notebooks/Muawiya/Genetic Programming Combiner with DFS/Codes/Shared Codes'
-results_path = '/content/drive/My Drive/Colab Notebooks/Muawiya/Genetic Programming Combiner with DFS/Results'
-feature_selection_results = '/content/drive/My Drive/Colab Notebooks/Muawiya/Genetic Programming Combiner with DFS/feature_selection_results'
-evolving_path = '/content/drive/My Drive/Colab Notebooks/Muawiya/Genetic Programming Combiner with DFS/Evolving'
+data_path = '/content/drive/My Drive/Colab_Notebooks/Muawiya/Genetic Programming Combiner with DFS/data'
+code_path = '/content/drive/My Drive/Colab_Notebooks/Muawiya/Genetic Programming Combiner with DFS/Codes/Shared Codes'
+results_path = '/content/drive/My Drive/Colab_Notebooks/Muawiya/Genetic Programming Combiner with DFS/Results'
+feature_selection_results = '/content/drive/My Drive/Colab_Notebooks/Muawiya/Genetic Programming Combiner with DFS/feature_selection_results'
+evolving_path = '/content/drive/My Drive/Colab_Notebooks/Muawiya/Genetic Programming Combiner with DFS/Evolving'
 sys.path.insert(0,code_path)
 from genetic_programming import SymbolicRegressor,SymbolicClassifier
 from binirizer import CustomLabelBinirizer
@@ -167,10 +167,8 @@ def concept_drift_detection(drift_detection_obj, sample) -> bool:
     drift_detection_obj.add_element(sample)
     return drift_detection_obj.detected_change()
   
-  
-  
 def random_forest_feature_selection(X, y):
-    sel = SelectFromModel(RandomForestClassifier(n_estimators = 2,random_state=0))
+    sel = SelectFromModel(RandomForestClassifier(n_estimators = 100,random_state=0))
     sel.fit(X, y)
     return sel.get_support()
   
@@ -200,7 +198,7 @@ def E2SC4ID_STREAM(ensemble, X, y, unselected_features, drift_detection_obj,
     return ensemble, drift_detection_obj
 
 def main(f_name, generate_model, train_size=0.8,apply_model_replacement=False,transfer_learning=False,
-         feature_selection=[], result_save_path="",DFS_results_path='',ChunkNumber=0):
+         feature_selection=[], result_save_path="",DFS_results_path='',ChunkNumber=0,is_synthetic=True,chunk_size = 500):
   datasets,results = {},{}
   d = prepare_data(f_name)
   d = d.sample(frac=1, random_state=42)
@@ -209,7 +207,7 @@ def main(f_name, generate_model, train_size=0.8,apply_model_replacement=False,tr
   d.replace([np.inf], 0, inplace=True)
   datasets[f_name.split('/')[-1]] = d
   # drift_locations_in_all_dataset = {}
-  
+  drift_locations = np.array([12500, 25000, 37500])//chunk_size
   for key in tqdm(datasets.keys()):
       drift_detection_obj = ADWIN()
       ensemble = None
@@ -221,6 +219,7 @@ def main(f_name, generate_model, train_size=0.8,apply_model_replacement=False,tr
       results[key] = {'model_result': []}
       data = datasets[key].values
       X, Y = data[:, 0:-1], data[:, -1].astype('int')
+      number_of_chunk = X.shape[0]//chunk_size
       if not os.path.exists("{}_evolving_matrix.pkl".format(os.path.join(evolving_path, key))):
         a2 = np.random.randint(low=0, high=X.shape[1], size = X.shape[1] // 6).tolist()
         a3 = np.random.randint(low=0, high=X.shape[1], size = X.shape[1] // 5).tolist()
@@ -230,19 +229,22 @@ def main(f_name, generate_model, train_size=0.8,apply_model_replacement=False,tr
       else:
         evolving_matrix = load_pickle("{}_evolving_matrix.pkl".format(os.path.join(evolving_path, key)))
       ensemble = generate_model(number_of_hidden_neurons=X.shape[1]*3 // 2, apply_model_replacement=apply_model_replacement)
-      chunks_features = np.array_split(X, 10)
-      chunks_labels = np.array_split(Y, 10)
+      chunks_features = np.array_split(X, number_of_chunk)
+      chunks_labels = np.array_split(Y, number_of_chunk)
       print("===================== dataset : {} ======================".format(key))
       chunk_number = 1
       for CN,chunk_X, chunk_Y in tqdm(zip([*range(len(chunks_labels))],chunks_features, chunks_labels)):
           drift = False
-          if chunk_number > 1:
-            for i in tqdm(range(len(chunk_X))):
-              if drift:
-                drift_location[chunk_number] = 'drift'
-                break
-              x, y_true = chunk_X[i], chunk_Y[i]
-              drift = E2SC4ID(x,y_true,ensemble=ensemble,drift_detection_obj=drift_detection_obj)
+          if is_synthetic:
+          	drift = True if chunk_number in drift_locations else False
+          else:
+            if chunk_number > 1:
+              for i in tqdm(range(len(chunk_X))):
+                if drift:
+                  drift_location[chunk_number] = 'drift'
+                  break
+                x, y_true = chunk_X[i], chunk_Y[i]
+                drift = E2SC4ID(x,y_true,ensemble=ensemble,drift_detection_obj=drift_detection_obj)
           try:
             chunk_X, chunk_Y = SMOTE(random_state=0).fit_resample(chunk_X, chunk_Y)
           except:
@@ -258,7 +260,11 @@ def main(f_name, generate_model, train_size=0.8,apply_model_replacement=False,tr
             unselected_feautres = feature_evolving(evolving_matrix=evolving_matrix)
             if feature_selection[1] == "random_forest":
               print("Evolving RandomForest")
-              selected = np.array(random_forest_feature_selection(X_train, y_train))
+              if not os.path.exists(os.path.join(DFS_results_path,"RandomForest_mask_"+str(CN)+".pkl")):
+                selected = np.array(random_forest_feature_selection(X_train, y_train))
+                save_object(selected, "RandomForest_mask_"+str(CN),DFS_results_path)
+              else:
+                selected = load_object("RandomForest_mask_"+str(CN),DFS_results_path)
               selected1 = np.delete(selected, unselected_feautres)
               if sum(selected1)!=0:
                 selected=selected1
@@ -279,8 +285,12 @@ def main(f_name, generate_model, train_size=0.8,apply_model_replacement=False,tr
               selected = None
           else:
             if feature_selection[1] == "random_forest":
-              print("RandomForest")
-              selected = random_forest_feature_selection(X_train, y_train)
+              if not os.path.exists(os.path.join(DFS_results_path,"RandomForest_mask_"+str(CN)+".pkl")):
+                selected = np.array(random_forest_feature_selection(X_train, y_train))
+                save_object(selected, "RandomForest_mask_"+str(CN),DFS_results_path)
+              else:
+                selected = load_object("RandomForest_mask_"+str(CN),DFS_results_path)
+              #selected = random_forest_feature_selection(X_train, y_train)
               unselected_feautres = np.where(selected != 1)[0]
             elif feature_selection[1] == "DFS_feature_selection":
               print("DFS")
@@ -312,6 +322,7 @@ def main(f_name, generate_model, train_size=0.8,apply_model_replacement=False,tr
             ensemble.evaluate(X_test, y_test, chunk_number)
 
 
+          if not selected is None and any(selected) is False:selected[0]=True
           if not selected is None:temp = np.squeeze(X_test[:, selected]) if len(list(X_test[:, selected].shape))>2 else X_test[:, selected]
           else:temp = X_test
           start_time = time()
